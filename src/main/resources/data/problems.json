@@ -1,0 +1,20 @@
+{
+  "problems": [
+    {
+      "id": 1,
+      "name": "Remove Duplicates from Sorted Array II",
+      "link": "https://leetcode.com/problems/remove-duplicates-from-sorted-array-ii/description/?envType=study-plan-v2&envId=top-interview-150",
+      "type": "ARRAY",
+      "dateSolved": "2024-11-21T21:35:06.322",
+      "notes": "Note 1"
+    },
+    {
+      "id": 2,
+      "name": "3Sum",
+      "link": "https://leetcode.com/problems/3sum/description/?envType=study-plan-v2&envId=top-interview-150",
+      "type": "TWO_POINTER",
+      "dateSolved": "2024-11-22T22:56:09.588",
+      "notes": "Note 2"
+    }
+  ]
+}

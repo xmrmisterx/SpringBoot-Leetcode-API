@@ -1,0 +1,732 @@
+-To start, go to start.spring.io and pick title and dependencies
+-Unzip the downloaded folder and put into documents, possibly need to rename folder, then open up from intelliJ
+-Had issues changing the default class names and packages. We wanted to remove "".demo" from the package, but then it
+stopped loading. So from start.spring.io, the package name is a combo of the "group" and "artifact" so type whatever I
+guess we need so that the package ends up being what we want it to be. In this case, we have a package called
+SpringBoot.Leetcode.API, so the group was "SpringBoot" and the "artifact" was "Leetcode API".
+-The structure is to create another package within the main package, which is currently SpringBoot.Leetcode.API. So we
+want to create a Problem class, so that involves creating a "problem" package, with a "Problem" class. Bc classes have
+the first letter capitalized, we need to make the package have lower case first letter to differentiate
+-He used a record for the run class, instead of a class, bc records have built in getters/setters? No, that's not true.
+Google says this:
+
+    So ,the main difference between class and record type in Java is that a record has the main purpose of storing data,
+    while a class defines responsibility. Records are immutable, while classes are not. Simply put, a class is an OOP
+    concept that wraps data with functionality, while a record represents a set of data.
+
+-Now we want to create classes using the MVC model. We get that problem is the model, and its controller is going to be
+a problem controller, but what's the view here? I guess there's no frontend so maybe no actual view? There seems to be
+alot of info about this sort of thing, and we don't really want to get into it. I think it's safe to say we only have
+a model, which is the problem, and a controller here. Google does say the repository is common in jdbc and usually makes
+calls to the db, so that's part of the controller I'd say. So we want the Problem record, the ProblemRepository, and
+the problem controller.
+-The next question is, do we want an interface for our ProblemRepository. I think the reason it was an interface was
+so we could extend it with inMemoryRunRepository and jdbcRunRepository, but here, I think it's just one, so we don't
+really want that extra layer. We know that classes can only inherit 1 class, but multiple interfaces, so having a lot
+of interfaces is good bc we can give classes the functionality as needed and multiple different types, but this project
+is simpler and I don't think we need that. Google says this:
+
+    A class can be instantiated i.e., objects of a class can be created. An Interface cannot be instantiated i.e.
+    objects cannot be created. Classes do not support multiple inheritance. The interface supports multiple inheritance.
+
+So it looks like the 2 main reasons are a)if we don't need objects of our interface b)if we want to inherit from more
+than one thing. If these 2 are true, we probably want an interface. We don't need to instantiate the repository, but
+we do need to instantiate our Problem, so that's why Problem is a class/record.
+-So the tutorial code marks the repository with a @Repository,and we weren't sure why. Google says this:
+
+    Spring @Repository annotation is used to indicate that the class provides the mechanism for storage, retrieval,
+    search, update and delete operation on objects
+
+So it looks like we're basically saying that it's going to interact with a database when we mark it @Repository.
+-So we tried to follow the code and do "private static final" for the first property, the logger, but "private" is not
+allowed on an interface. So looking at the tutorial, the jdbcclientRunRepository is actually a class, so it is being
+instantiated, so actually we need to change from interface to class, which also lets us make the logger private.
+-We try to add the next property, and it says that maven needs it, so we'll want to get it from start.spring.io. But
+intellij also can import it, so let's try that? No, the start.spring.io is easier, bc this one makes us search and we
+won't know which one is the right one. Recall that this jdbc client is required to connect to the database, and that's
+what the ProblemRepository does, so they need each other.
+-Finally, before we start writing the code, we need a constructor that sets the jdbcClient to the one in the constructor
+Recall that a constructor looks like the class definition, but "class" is not in it.
+-Then, we want a ProblemController, the controller part of MVC, that manipulates/creates Problems via the ProblemReposi-
+tory. This needs a ProblemRepository reference, which we initialize, then set in the constructor to be the repository
+in the parameter. So let's take a step back here. We have a repository, which will communicate with the database, and
+so it needs the jdbcClient, that's why we set it in its constructor. Recall that jdbc stands for java database
+connectivity. Then, we have a problemController, which basically calls the commands in the ProblemRepository, so that's
+why it needs a problemRepository reference, which we set up in its constructor.
+-We annotate our class with @RestController, and we understand this one better. It allows it to make rest calls, but
+this is what google says:
+
+    RestController is used for making restful web services with the help of the @RestController annotation. This
+    annotation is used at the class level and allows the class to handle the requests made by the client.
+
+Presumably this also needs the Web maven dependency, which we already included.
+-We also use @RequestMapping to set up the base url. Here's what google said about this annotation:
+
+    You can use the @RequestMapping annotation to map requests to controllers methods. It has various attributes to
+    match by URL, HTTP method, request parameters, headers, and media types. You can use it at the class level to
+    express shared mappings or at the method level to narrow down to a specific endpoint mapping.
+
+-So we do a @GetMapping and use "" for the base url. We could also set the http status here, but i think by default
+it's 200, so we don't, bc that's what we want 200.
+
+****
+Set up a database so that we can test this, and write unit tests for it after.
+***
+
+-We install the postgres and the docker dependencies and added the compose.yaml file from start.spring.io, and also
+the schema.sql file to resources folder. Everything actually works suprisingly, but there's no table, so how do we set
+up the table? Our code isn't actually creating anything? We need the dataloader and the data.json file.
+-OK, so we start with this for the dataloader class:
+
+    package SpringBoot.Leetcode.API.problem;
+
+    import com.fasterxml.jackson.core.type.TypeReference;
+    import com.fasterxml.jackson.databind.ObjectMapper;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+    import org.springframework.boot.CommandLineRunner;
+
+    import java.io.IOException;
+    import java.io.InputStream;
+
+    public class ProblemDataJsonLoader implements CommandLineRunner {
+        private static final Logger logger = LoggerFactory.getLogger(ProblemDataJsonLoader.class);
+        ProblemRepository problemRepository;
+        ObjectMapper objectMapper;
+
+        public ProblemDataJsonLoader(ProblemRepository problemRepository, ObjectMapper objectMapper){
+            this.problemRepository = problemRepository;
+            this.objectMapper = objectMapper;
+        }
+
+We forgot we needed an objectMapper in addition to a problemrepository. Then, LoggerFactory was red the whole time,
+so we had to find the import for LoggerFactory from the tutorial code. Not sure why intellij can't auto import it.
+-We're currently here with our function to load the data:
+
+        @Override
+        public void run(String... args) {
+            if(this.problemRepository.count()==0){
+                try(InputStream inputStream = TypeReference.class.getResourceAsStream("/data/problems.json")){
+                    List<Problem> allProblems = objectMapper.readValue(inputStream,Problem.class);
+                }catch(IOException e){
+
+                }
+            }
+        }
+
+And now it's kind of clear why we need a Problems class/interface. We need to output a list of problems, and in the
+tutorial "Problem.class" would be "Problems.class" so it's using that one as a list of problems, in order to match up
+here. I'm not sure how to handle it otherwise, bc we're not sure what objectMapper and readValue and input stream are
+doing exactly, so yeah, probably have to use a Problems. So we create a record calls Problems that has one property,
+a list of problems called "problems", and then the new line is:
+
+    Problems allProblems = objectMapper.readValue(inputStream,Problems.class);
+
+and there's no red squiggly. So now we have this:
+
+        @Override
+        public void run(String... args) {
+            if(this.problemRepository.count()==0){
+                try(InputStream inputStream = TypeReference.class.getResourceAsStream("/data/problems.json")){
+                    Problems allProblems = objectMapper.readValue(inputStream,Problems.class);
+                    this.problemRepository.saveAll(allProblems.problems());
+                }catch(IOException e){
+                    throw new RuntimeException("Failed to load problems data from json.");
+                }
+            } else{
+                logger.info("Did not load problems data since problem repository has data");
+            }
+        }
+
+And it looks good, but there's several things missing
+    a)We don't have .count() function, so we need that. It's actually not just returning the size of the repository,
+    since that may not be accurate. We have to query the database first and it looks like this:
+            public int count(){
+        //        return this.jdbcClient.size();
+                return this.jdbcClient.sql("select * from problem").query().listOfRows().size();
+            }
+    b)We don't have a saveAll method, and that looks like this:
+            public void saveAll(List<Problem> problems){
+                problems.stream().forEach(this::create);
+            }
+    We noticed that in the "this::create" part, that "create" was red. So what this code is actually doing, is saying
+    that for each problem in the list of problems provided, to call create on it. So to resolve that, we need to make
+    a create function, which looks like this:
+            public void create(Problem problem){
+                var updated = this.jdbcClient.sql("insert into problem(id,name,link,type,date_solved,notes) values(?,?,?,?,?,?)")
+                        .params(problem.id(),problem.name(),problem.link(),problem.type(),problem.dateSolved(),problem.notes())
+                        .update();
+                Assert.state(updated==1, "Failed to create problem with name " + problem.name());
+            }
+    Note here that we call .params to fill in the params of the sql statement that have ?'s, then call update since we
+    are making changes to the database. Also, we are testing here that it works with Assert.state, so if the number of
+    rows updated is not equal to 1, then it's going to log out that error message.
+-So we restart the application, and it seems like docker is reading the compose file and postgres is up and what not,
+but the database is empty. Then we thought, do we need to trigger the command line runner in the main application? Wait
+we didn't do the @Component annotation. Remember he says it's used to let spring know that something exists. So we
+restart and get this error now:
+
+    Caused by: org.postgresql.util.PSQLException: ERROR: relation "problem" does not exist
+
+So we change our table name in schema.sql to "problem" from "Problem". So there's also an error at the top saying bad
+grammar for select * from problem. We looked at our notes and it says that the schema is with parantheses instead of
+braces, which we updated, but still the same no relation error. Our notes also says the sql has single quotes or
+something, but using that gives this error:
+
+    java: unclosed character literal
+
+And the actual repo code uses double quotes, so that's not it.
+-So actually, we notice that our notes says to add the url, username, and password into the application.properties,
+which isn't in our final code, but we go and add it to this current leetcode api. Note that in order to get the url,
+we need to click on the database thing on the top right and go into the database properties to set them up and also
+access the url at the bottom. So it looks like this:
+
+    spring.datasource.url=jdbc:postgresql://localhost:5432/problems
+    spring.datasource.username=Bobby
+    spring.datasource.password=password
+    spring.sql.init.mode=always
+
+Our notes also mention that init.mode=always is set so that the schema.sql is always used for the remote postgres db.
+-Now we're get the error that there's a syntax error at the end of the schema.sql. So it looks like we forgot to put
+a semicolon at the end, so now it looks like this:
+
+    CREATE TABLE IF NOT EXISTS Problem(
+        id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        link VARCHAR(255) NOT NULL,
+        type VARCHAR(10) NOT NULL,
+        date_solved timestamp NOT NULL,
+        notes VARCHAR(255) NOT NULL,
+        PRIMARY KEY (id)
+        );
+
+With parantheses and a semicolon.
+-Now we get this error:
+
+    Cannot invoke "java.util.List.size()" because the return value of "SpringBoot.Leetcode.API.problem.Problems.problems()" is null
+
+Which comes from this line:
+
+    logger.info("Saving {} problems into database.", allProblems.problems().size());
+
+When logging out our values. So it's saying that allProblems is null when we log it out. Having trying some things, we
+find in our problems.json this:
+
+    {
+      "runs": [
+        {
+          "id": 1,
+          "name": "Remove Duplicates from Sorted Array II",
+
+which we changed to this:
+
+    {
+      "problems": [
+        {
+          "id": 1,
+          "name": "Remove Duplicates from Sorted Array II",
+
+So when we are calling .problems(), or maybe fitting it into the Problems.class, it's actually looking for this first
+key value? We didn't realize it. So we check with chatgpt to see what objectMapper.readValue does and it says this:
+
+    If your JSON has nested objects (i.e., JSON objects within JSON objects), Jackson will recursively map the nested keys to the corresponding Java objects. For example:
+    {
+      "problem": {
+        "id": 123,
+        "title": "Sample Problem"
+      }
+    }
+    If you have a class like this:
+    public class Problems {
+        private Problem problem; // Nested object
+    }
+
+    public class Problem {
+        private int id;
+        private String title;
+    }
+    Jackson will look for the nested keys under "problem" and map them to the Problem object.
+
+So I think what's going on, is we give it the Problems class, which has a list of problems called "problems", and it's
+looking for this "problems" key in the json and goes into that to get the list. It looks like if we change the key to
+"problem" that it fails, so yeah, it seems to be doing that.
+-Now we get this error:
+
+    org.springframework.jdbc.BadSqlGrammarException: PreparedStatementCallback; bad SQL grammar [insert into problem(id,name,link,type,date_solved,notes) values(?,?,?,?,?,?)]
+
+-So comparing the tutorial code, we forgot to make a list of our params, so it looks like this:
+
+    public void create(Problem problem){
+        var updated = this.jdbcClient.sql("insert into problem(id,name,link,type,date_solved,notes) values(?,?,?,?,?,?)")
+                .params(List.of(problem.id(),problem.name(),problem.link(),problem.type().toString(),problem.dateSolved(),problem.notes()))
+                .update();
+        Assert.state(updated==1, "Failed to create problem with name: " + problem.name());
+    }
+
+Notably it's ".params(List.of(problem.id)..." and not ".params(problem.id()...".
+
+***
+Cool I think we have the main functionality now. Just add more... Well, we still need to write the unit tests as well.
+***
+
+-So first we create a test file for the problem repository class. Now, what would this need? Well it looks like it's a
+jdbc slice test, so we annotate with @JdbcTest and we autowire a ProblemRepository instance. We're still not sure what
+autowiring does, but Google says this:
+
+    @Autowired is an annotation in Spring Framework that enables dependency injection for Java classes. It allows Spring
+     to automatically inject dependencies into the class, eliminating the need for manual configuration. This annotation
+      can be used to inject dependencies into fields, methods, and constructors.
+
+And this is what the code looks like currently:
+
+    @JdbcTest
+    class ProblemRepositoryTest {
+
+        @Autowired
+        ProblemRepository repository;
+
+        @Test
+        void findAll() {
+        }
+    }
+
+So we run it and it fails, bc it says we should probably use the annotation @AutoConfigureTestDatabase. We googled and
+it says this:
+
+    Annotation that can be applied to a test class to configure a test database to use instead of the
+    application-defined or auto-configured DataSource
+
+So basically this creates some fake database and not one currently configured by the code. However, this is failing
+still. It says to put in the classpath the db to use, or adjust the replace option in autoconfiguretestdatabase. I think
+we do need the h2 database here?
+-We add the h2 dependency, and get the error that the TWO_POINTER value for problem type is actually 11 chars and we
+only set 10 chars for that value, so we updated it to 30, since some of these types are long (dynamic programming MD),
+but after fixing that, it does work now, without the replace thing. So the current code looks like this:
+
+    @JdbcTest
+    @Import(ProblemRepository.class)
+    @AutoConfigureTestDatabase
+    //@AutoConfigureTestDatabase(replace=AutoConfigureTestDatabase.Replace.NONE)
+    class ProblemRepositoryTest {
+    }
+
+We need to import the problemrepository class, otherwise it says there's no bean for it. We also need to not have this
+"replace.NONE" property which exists in the tutorial, bc our setup reads from the postgres database and we do want to
+replace it. However, with @AutoConfigureTestDatabase, it does do what Google said and uses this test database based
+off of h2 instance to test. As long as we have the h2 dependency we are good.
+-So now we move on to the problemController test. We see that we need @WebMvcTest, and googling shows that:
+
+    Typically @WebMvcTest is used in combination with @MockBean or @Import to create any collaborators required by your
+     @Controller beans
+
+ This doesn't say that much, but it does imply we need our @MockBean to mock the problemrepository, which is now
+ @MockitoBean apparently. We googled the difference between Autowired and mockbean and it says that autowired the bean
+ acts it does in the application, whereas mockbean acts like a mock and we can use "when" to stub it.
+-We're tryng to refactor and put these test problems into a constants folder, inside a Constants record, but it doesn't
+work, it looks like the data structure needs to be a class. Furthermore, we tried to make it "static final" variable,
+but we can't access it in the test folder unless we make it "public static final"
+-Then we try to create a list and add problems to it, but it won't let us call .add() on our problems list. We thought
+we forgot the right command, but in the tutorial, we actually add in the setup function, and it works there, so that's
+pretty weird. This is what we have now:
+
+        List<Problem> problems = new ArrayList<>();
+        @BeforeEach
+        void setUp(){
+            problems.add(PROBLEM1);
+        }
+
+-So this is the final test for checking all runs in the problemController:
+
+    @Test
+    void shouldFindAllRuns() throws Exception {
+        when(repository.findAll()).thenReturn(problems);
+        mvc.perform(MockMvcRequestBuilders.get(BASE_URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size()", is(problems.size())));
+    }
+
+There's a lot of syntax here that we didn't remember, such as "when" into ".thenReturn" and ".andExpect" into "status
+().isOk())" and "jsonPath("$.size()",is(problems.size())));" Also, like we noticed originally, the "is" intelliJ has
+problems actually finding the import for, which is "import static org.hamcrest.Matchers.is". Also, we did not remember
+the "MockMvcRequestBuilders" part at all, that .perform to that to .get is hard to remember. Note that mvc.perform
+has a red squiggly until we added the "throws Exception" in there.
+-One thing to point out, when we test the problem Repository directly, it's a @jdbcTest slice and it's very simple.
+We add problems to the repository and verify that the size is 2. In the test for the controller, the controller is a
+mockmvc and the repository is a mockitoBean, so we have to do a "when" into ".thenReturn" to stub the return for
+findAll, and we also have to call mvc.perform(MockMvcRequestBuilders.get(URL)) and the .andExpect and the jsonPath code,
+it's a ton of novel functions and syntax to remember.
+-So the final test would be the integration tests for the runcontroller. We have this:
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class ProblemControllerIntegrationTest {
+    @LocalServerPort
+    int randomPort;
+
+//    @Autowired
+//    ProblemController controller;
+//
+//    @Autowired
+//    ProblemRepository repository;
+
+    RestClient restClient;
+
+    @BeforeEach
+    void setUp(){
+        this.restClient = RestClient.create("http://localhost:" + randomPort);
+    }
+
+    @Test
+    void shouldFindAllRuns(){
+        List<Problem> problems = this.restClient.get()
+                .uri(BASE_ROUTE)
+                .retrieve()
+                .body(new ParameterizedTypeReference<>(){});
+        assertEquals(2,problems.size());
+    }
+
+Note that we thought we'd need to autowire in the controller and the repository, but I guess with the @SpringBootTest
+annotation the entire context is being loaded. I guess it's kind of weird that we're setting it to a random port, now
+that we think about it, and now that we've seen these random ports fail. What's the point of that? If we are testing
+our own code, which is set up for a specific port, then why are we using a random one, it's really kind of confusing.
+We can access the random port with @LocalServerPort then put it into the create in our rest client. For the test,
+we are calling this.restClient.get to the base route uri, retrieving, and then calling body, and we are asserting that
+the size is correct. It just doesn't work bc it's trying to talk to port 5432 as we had set in the
+application.properties, but if we comment that out, then it works. So if we remove the random port and keep in the
+url in the application.properties, it actually still fails with the can't connect error, so that random port apparently
+wasn't the issue.
+-Currently the issue is that it's saying it can't connect to the database so the creating of the problemRepository
+fails. Why does removing the datasource url make it work? It seems to not be building off of compose.yaml, so it's not
+the real thing, but is removing the datasource in the application properties making the integration test work. That's
+what we don't understand. We thought it was just bc the port was hardcoded, but when we removed the random port, it
+still failed.
+-Google says we can set the property for datasource.url to be whatever, so we set it to an empty string, and we get
+this error:
+
+    URL must start with 'jdbc'
+
+So it did change something, but it can't be an empty string.
+-We found this code on the internet that does log out the url:
+
+package SpringBoot.Leetcode.API;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
+
+    public class ApplicationReadyListener implements ApplicationListener<ApplicationReadyEvent> {
+
+        private static final Logger logger = LoggerFactory.getLogger(ApplicationReadyListener.class);
+
+        @Value("${key:defaultValue}")
+        private String keyValue;
+
+        @Override
+        public void onApplicationEvent(final ApplicationReadyEvent event) {
+            logger.info("Active config value for key is: {}", keyValue);
+        }
+    }
+
+However, it doesn't seem very specific:
+
+    Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+
+It's obviously not the url we need. So we remove the jpa dependency that we added to see if it changed anything, and
+now we see this:
+
+    Added connection conn0: url=jdbc:h2:mem:31cbcc49-6bf7-42e4-b8f5-3857973231ef user=BOBBY
+
+So there's a URL being printed out, and I don't think it's actually from that logging out class we addded. Is this I
+guess id random, let's try again. Here's the second one:
+
+    Added connection conn0: url=jdbc:h2:mem:f51e07ea-ae93-443e-94dd-cf77347fa74b user=BOBBY
+
+So yeah, it is, how do we make this work with our hardcoded connection url.
+-Googling more, we found some suggestions to use a second application.properties, inside the test/resources folder. We
+went and looked at his resources folders and saw only one application.properties file, for the real thing, but we
+saw this again:
+
+    spring.datasource.generate-unique-name=false
+
+So using this for ours, we get this printout:
+
+    Added connection conn0: url=jdbc:h2:mem:problems user=BOBBY
+
+Let's try it again and see if it changes:
+
+    Added connection conn0: url=jdbc:h2:mem:problems user=BOBBY
+
+Yeah, so now it's still the same, so we've removed the randomness of the connection url, but how do we set it up so
+that the real one uses the real one and the fake one uses this in memory one?
+-So what's interesting is we see this when running the real thing:
+
+    Added connection org.postgresql.jdbc.PgConnection@7a564605
+
+And we are still able to do the findAll to port 8080 and get our results, and I guess that's bc of this printout:
+
+    Tomcat started on port 8080 (http) with context path '/'
+
+-Ok,so testing it again, by removing the datasource from application.url, it does work both ways. I guess we didn't test
+this yesterday, bc there's no error when we remove the datasource, so we're not even sure what that datasource is
+doing? The compose.yaml sets the port, inside the container, to be 5432, and the port for our rest api is 8080, so the
+calls to 8080 still work, and apparently the calls to 5432 as well. The only time it doesn't work is when we set the
+datasource, and we get these errors:
+
+    Caused by: org.springframework.jdbc.CannotGetJdbcConnectionException: Failed to obtain JDBC Connection
+    	at org.springframework.jdbc.datasource.DataSourceUtils.getConnection(DataSourceUtils.java:84) ~[spring-jdbc-6.2.0.jar:6.2.0]
+    	at org.springframework.jdbc.datasource.init.DatabasePopulatorUtils.execute(DatabasePopulatorUtils.java:52) ~[spring-jdbc-6.2.0.jar:6.2.0]
+    	... 134 common frames omitted
+    Caused by: org.postgresql.util.PSQLException: Connection to localhost:5432 refused. Check that the hostname
+    and port are correct and that the postmaster is accepting TCP/IP connections.
+
+So when the datasource is set, it can't connect to that specific connection, but when we remove it, it seems to be
+using the correct one. Is the datasource for connecting to the database via the top right database icon in intelliJ?
+We remove the datasource from application, still able to connect to the database from the IDE, so basically yeah, I
+think we just remove that line and it's not needed
+-Ok, so we're done writing the last test there, and everything works, so now we just need to add the functionality bc
+we've basically just done the findAll function and made sure all the unit tests work for it. We resolved our issue of
+the integration test not working by removing the datasource, and the application actually still works, so datasource
+is not actually needed.
+-Next function for ProblemRepository is to find by id. So we remember to have the int id param, we remember the sql
+statement, and to use .param to set "id" to the id in the parameter, and then .query to map to our problem class, but
+we forgot to call at the end .optional() which converts it into an optional? At that point, it was complaining that
+our return type of problem didn't match some map query data structure, so we have to call .optional and make the
+function return an optional of problem.
+-We messed up the controller part for the findById call. Instead of using this correct one:
+
+    @GetMapping("/{id}")
+    Optional<Problem> findById(@PathVariable int id){
+        return this.problemRepository.findById(id);
+    }
+
+We used this:
+
+    @GetMapping(BASE_ROUTE+"/{id}")
+    Optional<Problem> findById(@PathVariable int id){
+        return this.problemRepository.findById(id);
+    }
+
+We forgot that the route mapping at the start of the controller, has that part first, so the base_route is already
+present. Now, we do have to put that entire route in the controller test, but not in the actual controller. Actually,
+looking at the tutorial findById, we messed up even more.It should be this:
+
+    @GetMapping("/{id}")
+    Problem findById(@PathVariable int id){
+        Optional<Problem> problem = this.problemRepository.findById(id);
+        if(problem.isPresent()){
+            return problem.get();
+        }
+        throw new ProblemNotFoundException();
+    }
+
+So we have to make it throw this custom problemNotFoundException, so that we can test that this is being thrown for
+the invalid ids. This is the exception class:
+
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public class ProblemNotFoundException extends RuntimeException{
+        public ProblemNotFoundException(){
+            super("Problem not found.");
+        }
+    }
+-Next we have the invalid id test. In the problem repository test, it looks like this:
+
+    @Test
+    void shouldNotFindRunWithInvalidId(){
+        Optional<Problem> problem = repository.findById(3);
+        assertTrue(problem.isEmpty());
+    }
+
+Note that we've filled up the repository with 2 problems, so there's no 3rd problem, and we're not using assertEquals
+bc there's no comparison needed, so just trying to simply check that the problem is empty. In the controller test it
+looks like this:
+
+    @Test
+    void shouldNotFindProblemWithInvalidId() throws Exception {
+        mvc.perform(MockMvcRequestBuilders.get(BASE_ROUTE + "/3"))
+                .andExpect(status().isNotFound());
+    }
+
+Since we set up that custom exception that throws the not found status. There's no integration test for this, I'm not
+sure bc it's too hard to write or he forgot or what.
+-Ok, let's continue to fill it out, and actually write all the code for each file at once now. We brke it up at the
+start just bc we wanted to make sure everything was working, but it's very slow writing it one by one. Also, add a
+call to filter by problem type and see if we still get that enum problem converting enum to int.
+-So these are the rest of the functions in problem repository:
+
+        public void update(Problem problem,int id){
+            var updated = this.jdbcClient.sql("update problem set id=?,name=?,link=?,type=?,date_solved=?,notes=? where id=:id")
+                    .param(List.of(problem.id(),problem.name(),problem.link(), problem.type().toString(),problem.dateSolved(),problem.notes(),id))
+                    .update();
+            Assert.state(updated==1,"Failed to update problem with name: " + problem.name());
+        }
+
+        public void delete(int id){
+            var updated = this.jdbcClient.sql("delete from problem where id=:id")
+                    .param("id", id)
+                    .update();
+            Assert.state(updated==1,"Failed to delete problem with id: " + id);
+        }
+
+        public List<Problem> findByProblemType(String type){
+            return this.jdbcClient.sql("select * from problem where type=:type")
+                    .param("type",type)
+                    .query(Problem.class)
+                    .list();
+        }
+
+We made mistakes on all three... For update, we actually don't want to set the id. That's one thing that stays, it's
+what we're trying to find it by, and I guess we can update it, but i don't think so, bc it's a primary key, and should
+basically never change. It's a unique identifier. The syntax to "update problem set <property>=?" we also didn't
+remember, so that's a weird syntax that we haven't used before I guess. The next one is delete. In this one, we do
+"delete problem" instead of "delete from problem" so that's syntax we need to remember. Also, back to update, we need
+a "list.of" not just "list" when we have multiple params in ".param", and for both of these, we are calling update()
+after .param() and also it's the last thing we call, so unlike the queryies where it's .query() into .optional() there's
+only 2 calls here, .param and .update. For both we also forgot the syntax for that weird assert where we have a
+boolean and text for when the boolean is false. Lastlyin the find by problem type, we return an Optional<Problem> but
+we have to remember that there can be more than one problem of a type, so it's actually "List<Problem>". That means
+also that after .query, we are using .list() at the end, and not .optional.
+-We run the update test and get this error:
+
+    java.lang.IllegalArgumentException: Invalid positional parameter value of type Iterable (ListN): Parameter expansion
+    is only supported with named parameters.
+
+Looking at the tutorial code, it looks like the problem repository we're using .param instead of .params. So this is
+the final update:
+
+    public void update(Problem problem,int id){
+        var updated = this.jdbcClient.sql("update problem set name=?,link=?,type=?,date_solved=?,notes=? where id=?")
+                .params(List.of(problem.name(),problem.link(), problem.type().toString(),problem.dateSolved(),problem.notes(),id))
+                .update();
+        Assert.state(updated==1,"Failed to update problem with name: " + problem.name());
+    }
+
+We also missed removing problem.id() out of the list when we removed it from the sql statement. The id is a unique
+qualifier and should not change. Also, we did "id=:id" like in the queries, but in these updates, it's actually "id+?".
+-So now we're finishing up the ProblemController. We have this for the post to create a problem in the database:
+
+    @ResponseStatus(HttpStatus.CREATED)
+    @PostMapping("")
+    void create(@RequestBody Problem problem){
+        this.problemRepository.create(problem);
+    }
+
+One thing we messed up on, is that it's from the "@RequestBody" and not "@RequestParam" that we initially had. That's
+obvious right, since we did that at Ricoh, we send posts and get data from the body.
+-So this one is for update:
+
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PutMapping("/{id}")
+    void update(@Valid @RequestBody Problem problem, @PathVariable int id){
+        this.problemRepository.update(problem,id);
+    }
+
+We looked at the tutorial and noticed the @Valid, which we didn't have the dependency. We had to get it in start.spring.
+io by typing in validation. It uses jakarta to validate. That also means we need to put validation in our actual
+problem class, which looks like this:
+
+    public record Problem(
+        Integer id,
+        @NotEmpty
+        String name,
+        String link,
+        ProblemType type,
+        LocalDateTime dateSolved,
+        String notes
+    )
+
+So in the tutorial we had a @NotEmpty for the title, and a @positive for the miles, but here we don't have an int
+besides the id, so we just have @NotEmpty for the name.
+-On to the controller tests. This is the one for create:
+
+    @Test
+    void shouldCreateProblem() throws Exception {
+//        when(repository.create(PROBLEM3)).thenReturn(PROBLEM3));
+        mvc.perform(MockMvcRequestBuilders.post(BASE_ROUTE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(PROBLEM3))
+                )
+                .andExpect(status().isCreated());
+//                .andExpect(jsonPath("$.size()", is(problems.size())));
+    }
+
+So we messed up 2 ways. First, we thought we stub .create, but we don't need to, bc the controller isn't calling
+.create right, it's a fake controller. What we need to test is that we give a problem in the .content with type
+json, like how the controller would receive a post, and then verify that the status is created. We also thought we'd
+check the size, but once again, the repository is disconnected, so that's not going to work.
+-One more thing, we have the findByType tests. So we add it to our controller, bc we had forgotten, and here's our
+final controller test for it:
+
+    @Test
+    void shouldFindByType() throws Exception {
+        List<Problem> arrayProblems = List.of(PROBLEM1);
+        when(repository.findByType(String.valueOf(ProblemType.ARRAY))).thenReturn(arrayProblems);
+        mvc.perform(MockMvcRequestBuilders.get(BASE_ROUTE + "/type/ARRAY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size()", is(1)))
+                .andExpect(jsonPath("$[0].type", is(arrayProblems.get(0).type().toString())));
+    }
+
+So we didn't know how to create a list of problems for our "arrayProblems", google said "Arrays.asList" but I think the
+current is "List.of". Also, when writing the controller endpoint, we have to put it in the "type" endpoint, bc if we
+just do a "{type}" that conflicts with the get for the id. Ideally id would have an "/id" as well so it's more clear
+right. Then, when we tried to verify the type, we didn't know how to use "jsonPath" to get into the first item in the
+array. Goolging the baeldung page, it's alot of java/spring stuff and we got our answer pretty quick. Basically we can
+use bracket notation with $ being the top level, or object in this case, so with a list, we just did "$[0].type".
+Additionally, when we are doing the ".andExpect" comparison, we are forgetting to do the "is()" to check it, so that's
+syntax to remember.
+-We need to write all the controller integration tests now. OK, so here is the one for finding by problem type:
+
+        @Test
+        void shouldFindProblemsByType(){
+            List<Problem> problems = this.restClient.get()
+                    .uri(BASE_ROUTE + "/type/ARRAY")
+                    .retrieve()
+                    .body(new ParameterizedTypeReference <>(){});
+            assertEquals(1,problems.size());
+            assertEquals(ProblemType.ARRAY,problems.get(0).type());
+
+    //        assertEquals(ProblemType.ARRAY.toString(),problems.get(0).type().toString());
+        }
+
+So note that we can check here, that its a problem type array, with the first result's type. We don't have to stringify
+and that's bc the problemRepository, when it calls .query, it maps it to the problem class, so the "ARRAY" string, is
+already converted into a problemtype.array, and that's why we don't need the .toString() here.
+-So we finish writing the integration tests, but when we run them as a bunch, they actually fail. It seems there's
+an actual database, so things like creation and deletion are actually working, and the tests go out of order and mess
+up all the asserts. We googled and it said there's this @TestMethodOrder annotation that we can put at the class level,
+and then we put the order for each one with @Order(<value>) and it'll go in order, and in this way, it did fix it, so
+that's good. It looks like this:
+
+    @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+    class ProblemControllerIntegrationTest {
+        @LocalServerPort
+        int randomPort;
+
+        RestClient restClient;
+
+        @BeforeEach
+        void setUp(){
+            this.restClient = RestClient.create("http://localhost:" + randomPort);
+        }
+
+        @Test
+        @Order(1)
+        void shouldFindAllProblems(){
+
+Note that the @TestMethodOrder annotation requires a parameter, which apparently should be this one for ordering:
+
+    MethodOrderer.OrderAnnotation.class
+
+-Let's figure out why postman can't create, and then clean it up and we should be finished. Ok, so we finally found it
+after trying some things. So it looks like this for the url to the POST:
+
+    localhost:8080/api/problems
+
+And we had used this:
+
+    localhost:8080/api/problems/
+
+So it was the extra slash. It was working in our tests I guess bc we had set up the base route correctly as
+"/api/problems" but we put that extra slash in the postman url and it gave us the "No static resource /api/problems/."
+error I think.
